@@ -1,51 +1,54 @@
-import torchtext
-import tt_helper as th
-import itertools 
+import preprocessing as pp
 import numpy as np
-import Set
-from nltk.corpus import stopwords
 
 
-TEXT, LABEL, train_iter, val_iter, test_iter = th.SST_preprocessing()
 
-vocab_len = len(TEXT.vocab)
+vocab_list, df = pp.build_vocab()
 
-#item = next(iter(train_iter))
-
-#for i in range(10):
-    #sent_indices =  item.text[:, i]
-    #print(type(sent_indices.data[0]))
-    #print(item.label[i])
+def create_bow(sentence, vocab_list):
+    word_list = pp.tokenize(sentence)
+    bow = np.zeros(len(vocab_list))
     
+    for word in word_list:
+            bow[vocab_list[word]] = 1
+    return bow
+
+def train_nb(vocab_list, df):
     
-def train_nb(train_iter): 
-
-    pos_list = np.zeros(vocab_len)
-    neg_list = np.zeros(vocab_len)
-    pos_count = 0
-    total_count = 0
-    for item in itertools.islice(iter(train_iter), 100):
-        for i in range(10):
-            word_set = Set()
-            
-            for word_index in item.text[:, i].data:
-                word_set.add(word_index)
-            
-
-            if(LABEL.vocab.itos[item.label.data[0]] == "positive"):
-                pos_count = pos_count + 1
-                for word_index in word_set:
-                    pos_list[word_index] += 1
-            else:
-                for word_index in word_set:
-                    neg_list[word_index] += 1
-            
-            total_count = total_count + 1
-            
-    neg_count = total_count - pos_count
+    #find prior = total positive examples/total examples 
+    total_sents = df.shape[0]
+    pos_sents = df.loc[df['splitset_label'] == 1].shape[0]
+    neg_sents = total_sents - pos_sents
     
-    return (pos_list/pos_count, neg_list/neg_count, pos_count/total_count)
+    #initiate counts for word appearance conditional on label == 1 and label ==2
+    #alpha is laplacian smoothing parameter
+    alpha = 1
+    pos_list = np.ones(len(vocab_list)) * alpha
+    neg_list = np.ones(len(vocab_list)) * alpha
+    
+    for sentence, label in zip(df['sentence'].values, df['splitset_label']):
+        bow = create_bow(sentence, vocab_list)   
+      
+        if label == 1:
+            pos_list += bow
+        else:
+            neg_list +=bow
+            
+            
+    #Calculate log-count ratio
+    r = np.log(pos_list/pos_list.abs().sum())/(neg_list/neg_list.abs().sum())
+    b = pos_sents/neg_sents
+    
+    return r, b
 
-
-#print(train_nb(train_iter))
+def predict_nb(sentence, r, b, vocab_list):
+    bow = create_bow(sentence, vocab_list)
+    result = np.sign(np.dot(bow, r.T) + b)
+    
+    if result > 0:
+        return 1
+    else:
+        return 2
+            
+            
 
