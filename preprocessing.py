@@ -21,11 +21,35 @@ def tokenize(sent, gram):
 
     return sent_tok
     
-def build_vocab():
+def build_vocab(gram):
     
-    df_sent = pd.read_csv('Dataset/datasetSentences_test.txt', delimiter="\t")
-    df_label = pd.read_csv('Dataset/datasetSplit_test.txt', delimiter=",")
-    df = pd.merge(df_sent,df_label, on='sentence_index', how='outer')
+    df_sent = pd.read_csv('Dataset/datasetSentences.txt', delimiter="\t")
+    df_label = pd.read_csv('Dataset/sentiment_labels.txt', delimiter="|")
+    df_splitlabel = pd.read_csv('Dataset/datasetSplit.txt', delimiter=",")
+    df_dictionary = pd.read_csv('Dataset/dictionary.txt', delimiter="|", names =['sentence', 'phrase ids'])
+    df = pd.merge(df_sent, df_dictionary, on='sentence', how='left')
+    df = pd.merge(df, df_splitlabel, on='sentence_index')
+    df = pd.merge(df, df_label, on='phrase ids', how='left')
+    
+    #transform SST1 into SST2 by removing neutral reviews and making
+    #classification binary
+    
+    def classify(sent_value):
+        classification = 0
+        if sent_value <= .4:
+            classification = 2
+        elif sent_value > .6:
+            classification = 1
+        else:
+            classification = 3
+            
+        return classification
+    
+    df['label'] = df['sentiment values'].apply(classify)
+    
+    #drop all neutral reviews
+    df = df[df['label'] != 3]
+    
 
     word_count = 0
     vocab_list = {}
@@ -33,13 +57,14 @@ def build_vocab():
     #create set 
     vocab_set = set()
     for sentence in df['sentence']:
-        word_list = tokenize(sentence, 1)
+        word_list = tokenize(sentence, gram)
         vocab_set.update(word_list)
         
     for word in vocab_set:
         vocab_list[word] = word_count
         word_count +=1  
     
-    return vocab_list, df
-
-        
+    df_train = df[df['splitset_label'] == 1]
+    df_test = df[df['splitset_label'] == 3]
+    
+    return vocab_list, df_train, df_test
