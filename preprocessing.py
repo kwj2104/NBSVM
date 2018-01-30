@@ -60,10 +60,12 @@ def build_vocab(gram):
         word_list = tokenize(sentence, gram)
         vocab_set.update(word_list)
         
+    #print(vocab_set)
+    
     for word in vocab_set:
         vocab_list[word] = word_count
         word_count +=1  
-    
+    #CHANGE BACK
     df_train = df[df['splitset_label'] == 1]
     df_test = df[df['splitset_label'] == 3]
     
