@@ -1,9 +1,11 @@
 import preprocessing as pp
 import numpy as np
-import sklearn as sk
+from sklearn.svm import LinearSVC
 
-GRAM = 2
+#Hyperparameters
+GRAM = 1
 C = 1
+BETA = .25
 
 
 def create_bow(sentence, vocab_list, gram):
@@ -14,7 +16,7 @@ def create_bow(sentence, vocab_list, gram):
             bow[vocab_list[word]] = 1
     return bow
 
-def train_nb(vocab_list, df, gram):
+def train_nb(vocab_list, df):
     
     #find prior = total positive examples/total examples 
     total_sents = df.shape[0]
@@ -32,7 +34,7 @@ def train_nb(vocab_list, df, gram):
     neg_list = np.ones(len(vocab_list)) * alpha
     
     for sentence, label in zip(df['sentence'].values, df['label']):
-        bow = create_bow(sentence, vocab_list, gram)   
+        bow = create_bow(sentence, vocab_list, GRAM)   
       
         if label == 1:
             pos_list += bow
@@ -55,15 +57,31 @@ def train_nb(vocab_list, df, gram):
     
     return r, b
 
-def train_svm(vocab_list, df, gram, c):
-    clf = sk.LinearSVC(C=c, class_weight=None, dual=False, fit_intercept=True,
-     intercept_scaling=None, loss='squared_hinge', max_iter=1000,
+# Train SVM with L2 Regularization
+def train_svm(vocab_list, df_train, gram, c):
+    clf = LinearSVC(C=c, class_weight=None, dual=False, fit_intercept=True,
+     loss='squared_hinge', max_iter=1000,
      multi_class='ovr', penalty='l2', random_state=0, tol=0.0001,
      verbose=0)
     
-    pass
+    X = np.array([create_bow(sentence, vocab_list, gram)  for sentence in df_train['sentence'].values])
+    #y = np.where(df_train['label'].values == 1, 1, -1)
+    y = df_train['label'].values
+    
+    clf.fit(X, y)
+    
+    svm_coef = clf.coef_
+    svm_intercept = clf.intercept_
+    
+    #np.save('svm_coef.npy', svm_coef)
+    #np.save('svm_intercept.npy', svm_intercept)
+    
+    return svm_coef, svm_intercept
+    
+    
 
-def predict_nb(df_test, r, b, vocab_list, gram):
+#Use for MNB and SVM
+def predict(df_test, w, b, vocab_list):
     
     total_sents = df_test.shape[0]
     total_score = 0
@@ -71,34 +89,68 @@ def predict_nb(df_test, r, b, vocab_list, gram):
     for sentence, label in zip(df_test['sentence'].values, df_test['label']):
         predicted_label = 0
         
-        bow = create_bow(sentence, vocab_list, gram)   
-        result = np.sign(np.dot(bow, r.T) + b)
+        bow = create_bow(sentence, vocab_list, GRAM)   
+        result = np.sign(np.dot(bow, w.T) + b)
         if result > 0:
             predicted_label = 1
         else:
-            predicted_label = 2
+            predicted_label = -1
         
         if predicted_label == label:
             total_score += 1
             
     return total_score/total_sents
-        
+
+def predict_nbsvm(df_test, svm_coef, svm_intercept, r, b, vocab_list):
+    total_sents = df_test.shape[0]
+    total_score = 0
     
+    for sentence, label in zip(df_test['sentence'].values, df_test['label']):
+        predicted_label = 0
+        bow = r * create_bow(sentence, vocab_list, GRAM)  
+        w_bar = (abs(svm_coef).sum())/len(vocab_list)
+        w_prime = (1 - BETA)*(w_bar) + (BETA * svm_coef)
+        result = np.sign(np.dot(bow, w_prime.T) + svm_intercept)
+        if result > 0:
+            predicted_label = 1
+        else:
+            predicted_label = -1
+        
+        if predicted_label == label:
+            total_score += 1
+            
+    return total_score/total_sents
+    
+            
         
     
 def main():
     print("preprocessing...")
     vocab_list, df_train, df_test = pp.build_vocab(GRAM)
-    #print(df_train['sentence'])
-    print("training...")
-    r, b = train_nb(vocab_list, df_train, GRAM)
-    print("done")
+
+    #Train SVM
+    print("training svm...")
+    svm_coef, svm_intercept = train_svm(vocab_list, df_train, GRAM, C)
+    #train_svm(vocab_list, df_train, GRAM, C)
     
-    #r = np.load('trained_r.npy')
-    #b = np.load('trained_b.npy')
-    print(predict_nb(df_test, r, b, vocab_list, GRAM))
+    #print("predicting...")
+    #print(predict(df_test, svm_coef, svm_intercept, vocab_list))
+    
+
+    print("training NB...")
+    r, b = train_nb(vocab_list, df_train)
+    #print("done")
+
+    #print("predicting...")
+    #print(predict(df_test, r, b, vocab_list))
+    
+    #Predict Using NBSVM
+    print("Predict Using NBSVM:")
+    print(predict_nbsvm(df_test, svm_coef, svm_intercept, r, b, vocab_list))
 
 main()
+    
+
     
             
             

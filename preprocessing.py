@@ -37,7 +37,7 @@ def build_vocab(gram):
     def classify(sent_value):
         classification = 0
         if sent_value <= .4:
-            classification = 2
+            classification = -1
         elif sent_value > .6:
             classification = 1
         else:
@@ -70,3 +70,6 @@ def build_vocab(gram):
     df_test = df[df['splitset_label'] == 3]
     
     return vocab_list, df_train, df_test
+
+
+
